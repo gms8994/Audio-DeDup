@@ -1,0 +1,3 @@
+This script removes duplicate files based on data in the id3 metadata tags. It prefers MP3s at the highest bitrate available. If it finds an Ogg with the same artist, album, and title, it will remove the Ogg file. If it finds a FLAC with the same artist, album, and title, it will remove the existing file, and re-encode the FLAC to a 256bit MP3, and then remove the FLAC.
+
+Any problems, please open an issue.
