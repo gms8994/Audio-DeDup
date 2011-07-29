@@ -6,6 +6,7 @@ use warnings;
 use Audio::FLAC::Header;
 use Data::Dumper;
 use File::Find;
+use File::Temp qw/ tempfile tempdir /;
 use List::MoreUtils qw/ uniq /;
 use MP3::Tag;
 use Number::Bytes::Human qw/ format_bytes /;
@@ -13,6 +14,8 @@ use Ogg::Vorbis::Header;
 
 my %files;
 my $size_saved = 0;
+my $dry_run = 1;
+my $bit_rate = 256;
 
 find ({ wanted => \&wanted, preprocess => \&preproc }, "/opt/Music");
 
@@ -133,25 +136,17 @@ sub addToHash {
             print "FLAC:\n";
             print "\tDelete the file: $file\n";
             unlink $file;
-            print "\tRe-encode the flac: $e_file\n";
             $file =~ s/ogg$/mp3/;
-            my $command = "flac -dc \"$e_file\" | lame -b 256 --ignore-tag-errors --tt \"$title\" --tl \"$album\" --ta \"$artist\" --add-id3v2 - \"$file\" 2>&1";
-            `$command`;
-            $size_saved += ( -s $e_file );
-            print "\tAnd delete the flac: $e_file\n";
-            unlink $e_file;
+
+			$size_saved += convert_flac_to_mp3($e_file, $title, $album, $artist, $file);
             return;
         } elsif ($file =~ /flac$/i && $e_file =~ /(mp3|ogg)$/i) {
             print "FLAC:\n";
             print "\tDelete the file: $e_file\n";
             unlink $e_file;
-            print "\tRe-encode the flac: $file\n";
             $file =~ s/ogg$/mp3/;
-            my $command = "flac -dc \"$file\" | lame -b 256 --ignore-tag-errors --tt \"$title\" --tl \"$album\" --ta \"$artist\" --add-id3v2 - \"$e_file\" 2>&1";
-            `$command`;
-            $size_saved += ( -s $file );
-            print "\tAnd delete the flac: $file\n";
-            unlink $file;
+
+			$size_saved += convert_flac_to_mp3($file, $title, $album, $artist, $e_file);
             return;
         } else {
             #print "$file -- $e_file\n";
@@ -167,4 +162,35 @@ sub addToHash {
 
     $files{$artist}{$album}{$title}{'file'} = $file;
     $files{$artist}{$album}{$title}{'rate'} = $rate;
+}
+
+sub convert_flac_to_mp3 {
+	my ($flac_file, $title, $album, $artist, $output_file) = @_;
+
+	print "\tRe-encode the flac: $flac_file\n";
+	my $tempfile = decode_flac($flac_file);
+	encode_mp3($tempfile, $title, $album, $artist, $output_file);
+
+	print "\tAnd delete the flac: $flac_file\n";
+	unlink $e_file unless $dry_run;
+
+	return ( -s $flac_file );
+}
+
+sub decode_flac {
+	my ($flac_file) = @_;
+
+	my (undef, $filename) = tempfile( $template, TMPDIR => 1, OPEN => 0 );
+
+	# decompress the flac to a temp file
+	system('flac', '-d', '-o', $filename, $flac_file) unless $dry_run;
+
+	return $filename;
+}
+
+sub encode_mp3 {
+	my ($input_file, $title, $album,  $artist, $output_file) = @_;
+
+	# take the file and encode it with lame
+	system('lame', '-b', $bit_rate, '--ignore-tag-errors', '--tt', $title, '--tl', $album, '--ta', $artist, '--add-id3v2', $input_file, $output_file) unless $dry_run;
 }
